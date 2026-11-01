@@ -1,3 +1,9 @@
 # Data sensible / locale uniquement
 continuity/discovery_RemoveBG.md
 continuity/LOCAL_ONLY.md
+
+# Logs de debug (copyDebug — purge après diagnostic)
+debug.log
+
+# Backups de revert (états intermédiaires archivés)
+*.bak

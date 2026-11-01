@@ -1,3 +1,28 @@
+/* ═══ RemoveBG — Ghost browser ═══ */
+
+#removebg-ghost {
+    position: fixed;
+    left: -99999px;
+    top: 0;
+    width: 1280px;
+    height: 900px;
+    z-index: 2147483645;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+/* Révélation : simple swap CSS du MÊME browser — zéro reload */
+#removebg-ghost.rmbg-ghost-visible {
+    left: auto;
+    top: auto;
+    right: 16px;
+    bottom: 16px;
+    width: 420px;
+    height: 640px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
 /* ═══ RemoveBG — Toast UI ═══ */
 
 #removebg-toast {
