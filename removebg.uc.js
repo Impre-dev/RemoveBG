@@ -85,6 +85,13 @@
         return FILE_EXTS.has(ext);
     }
 
+    // Spec de la source du download (string OU nsIURI selon les versions)
+    function downloadSourceSpec(d) {
+        const u = d.source?.url;
+        if (!u) return '';
+        return typeof u === 'string' ? u : u.spec || '';
+    }
+
     let toastEls = null; // refs DOM du toast (lazy)
 
     function getToast() {
@@ -184,11 +191,24 @@
 
         const view = {
             onDownloadAdded(download) {
+                const spec = downloadSourceSpec(download);
+                // Anti-boucle : tout DL photoroom (page ou blob: — le blob
+                // porte l'origine) ne déclenche JAMAIS le toast.
+                if (spec.includes('photoroom.com')) {
+                    download.__removebgResult = true;
+                    log('DL photoroom ajouté — source:', spec);
+                    return;
+                }
                 if (isImageDownload(download)) {
                     download.__removebgCandidate = true;
                 }
             },
             onDownloadChanged(download) {
+                if (download.__removebgResult && download.succeeded) {
+                    download.__removebgResult = false;
+                    onResultDownloaded(download);
+                    return;
+                }
                 if (download.__removebgCandidate && download.succeeded) {
                     download.__removebgCandidate = false;
                     showToast(download);
@@ -205,6 +225,7 @@
     // ═══════════════════════════════════════════════════════════════════
 
     let ghost = null; // { browser, mmAttached }
+    let pipelineActive = false; // collage → DL résultat (fenêtre du résultat attendu)
 
     function getGhost() {
         if (ghost) return ghost;
@@ -225,6 +246,40 @@
 
     function hideGhost() {
         ghost?.browser.classList.remove('rmbg-ghost-visible');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    //  PHASE 6 — Résultat : fermeture de l'overlay sur DL (JAMAIS auto-DL)
+    //  Règle de survie : le captcha du tool est actif pendant la fenêtre
+    //  pipeline — un DL automatique pendant sa présence = signal bot.
+    //  L'humain clique Download, TOUJOURS ; le mod ne fait que détecter
+    //  ce DL et refermer l'overlay derrière lui.
+    // ═══════════════════════════════════════════════════════════════════
+
+    function closeGhostAfterResult() {
+        const g = getGhost();
+        hideGhost();
+        try {
+            // Purge du tool : l'élément reste (réutilisé tel quel), la page
+            // est déchargée. loadTool() re-naviguera au prochain run.
+            g.browser.loadURI(Services.io.newURI('about:blank'), {
+                triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+            });
+        } catch (e) {
+            log('ERREUR purge ghost :', e);
+        }
+        pipelineActive = false;
+        log('Overlay fermé — résultat téléchargé');
+    }
+
+    function onResultDownloaded(download) {
+        if (!pipelineActive) {
+            log('DL photoroom hors pipeline — overlay déjà calme');
+            return;
+        }
+        const path = download.target?.path || '';
+        log('Résultat téléchargé →', path.split(/[\\/]/).pop());
+        closeGhostAfterResult();
     }
 
     async function loadTool() {
@@ -540,6 +595,7 @@
     async function startRemoveBG(filePath) {
         try {
             log('Remove BG demandé →', filePath);
+            pipelineActive = true;
             revealGhost();
             const g = getGhost();
             attachFrameScript(g.browser);
