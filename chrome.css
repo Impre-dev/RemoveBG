@@ -1,0 +1,105 @@
+/* ═══ RemoveBG — Toast UI ═══ */
+
+#removebg-toast {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: 2147483646;
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+    min-width: 300px;
+    max-width: 380px;
+    padding: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    background: #1c1c1e;
+    color: #f2f2f7;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 13px;
+    overflow: hidden;
+    cursor: default;
+}
+
+#removebg-toast[hidden] {
+    display: none;
+}
+
+#removebg-toast .rmbg-thumb {
+    width: 56px;
+    height: 56px;
+    border-radius: 8px;
+    background: #2c2c2e center/cover no-repeat;
+    flex-shrink: 0;
+}
+
+#removebg-toast .rmbg-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+#removebg-toast .rmbg-name {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    opacity: 0.9;
+}
+
+#removebg-toast .rmbg-q {
+    opacity: 0.65;
+}
+
+#removebg-toast .rmbg-actions {
+    margin-top: 6px;
+}
+
+#removebg-toast .rmbg-yes {
+    padding: 5px 12px;
+    border: none;
+    border-radius: 7px;
+    background: #0a84ff;
+    color: #fff;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#removebg-toast .rmbg-yes:hover {
+    background: #339dff;
+}
+
+#removebg-toast .rmbg-close {
+    align-self: flex-start;
+    padding: 0 4px;
+    border: none;
+    background: none;
+    color: #8e8e93;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+#removebg-toast .rmbg-close:hover {
+    color: #f2f2f7;
+}
+
+/* Countdown : barre pleine → vide en TRANSITION (7s) ; l'event transitionend
+   déclenche le dismiss — zéro timer JS (event-driven only). */
+#removebg-toast .rmbg-countdown {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 3px;
+    width: 100%;
+    background: #0a84ff;
+    opacity: 0.55;
+}
+
+#removebg-toast .rmbg-countdown.run {
+    width: 0;
+    transition: width 7s linear;
+}
