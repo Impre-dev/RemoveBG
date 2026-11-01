@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name           RemoveBG — Engine
-// @version        0.6.2-revert
+// @version        0.9.5
 // @description    Retrait de BG sans friction : toast au download, ghost browser, paste natif
 // @author         Impre
 // @include        main
@@ -322,8 +322,6 @@
     )}`;
 
     let pendingReady = null;
-    let pendingFocused = null;
-    let pendingPasted = null;
 
     function attachFrameScript(browser) {
         if (ghost.mmAttached) return;
@@ -340,10 +338,6 @@
                 `DIAG paste — files=${d.files} name=${d.name} type=${d.type} size=${d.size}` +
                     ` target=${d.target} active=${d.active} trusted=${d.trusted}`
             );
-            pendingPasted?.resolve(true);
-        });
-        mm.addMessageListener('RemoveBG:DoPasteResult', (msg) => {
-            if (!msg.data.ok) log('execCommand paste refusé :', msg.data.error ?? '(retour false)');
         });
         mm.addMessageListener('RemoveBG:Focused', () => {
             log('Content window a le focus');
@@ -463,34 +457,80 @@
         log('Image écrite au clipboard (nativeimage depuis PNG) — helper screenshot');
     }
 
+    let pendingFocused = null;
+
     function waitForFocused() {
         return new Promise((res) => {
             pendingFocused = { resolve: res };
         });
     }
 
-    function waitForPasted() {
-        return new Promise((res) => {
-            pendingPasted = { resolve: res };
-        });
-    }
-
-    async function triggerPaste() {
+    function focusGhost() {
         const b = ghost.browser;
         attachFrameScript(b);
         b.focus();
         // Le focus traverse les process en async (Fission) : attendre la
         // confirmation du content (filet LAST RESORT 400 ms).
-        await Promise.race([
+        return Promise.race([
             waitForFocused(),
             new Promise((res) => setTimeout(res, 400)),
         ]);
-        // Paste natif déclenché DEPUIS le content (frame script privilégié)
-        const p = waitForPasted();
-        b.messageManager.sendAsyncMessage('RemoveBG:DoPaste');
-        const pasted = await p;
-        log(pasted ? 'Paste natif reçu par la page ✓' : 'Paste non reçu (timeout)');
-        return pasted;
+    }
+
+    // Ctrl+V au niveau SYSTÈME (idée opérateur 01/11 : « lancer un .py qui
+    // fait un ctrl au niveau du système ») — implémenté via PowerShell
+    // SendKeys : présent sur tout Windows, zéro dépendance. SendWait('^v')
+    // injecte le raccourci dans la fenêtre foreground : le VRAI pipeline OS,
+    // activation utilisateur incluse. Process éphémère (~300 ms), lancé par
+    // Zen lui-même. AUCUN refocus : la fenêtre a déjà le focus (clic toast).
+    function sendSystemCtrlV() {
+        return new Promise((resolve) => {
+            try {
+                // Script AHK dédié (ctrlv.ahk à côté du mod) — AutoHotkey est
+                // déjà de confiance sur la machine (Bitdefender le tolère),
+                // contrairement à powershell.exe enfant de zen.exe (blocage
+                // ATD, constat v0.9.2/0.9.3).
+                const scriptPath = PathUtils.join(
+                    PathUtils.profileDir,
+                    'chrome',
+                    'sine-mods',
+                    'RemoveBG',
+                    'ctrlv.ahk'
+                );
+                // ⚠️ proc.init() = l'EXÉCUTABLE (AutoHotkey64.exe) — le .ahk
+                // est un ARGUMENT.
+                const exePath = 'C:\\Program Files\\AutoHotkey\\v2\\AutoHotkey64.exe';
+                // nsIFile sans .init (retiré des versions modernes) : passer
+                // par nsIFileURL, fallback initWithPath
+                let ps;
+                try {
+                    ps = Services.io
+                        .newURI('file:///' + exePath.replace(/\\/g, '/'))
+                        .QueryInterface(Components.interfaces.nsIFileURL).file;
+                } catch (e) {
+                    ps = Components.classes['@mozilla.org/file/local;1'].createInstance(
+                        Components.interfaces.nsIFile
+                    );
+                    if (typeof ps.initWithPath === 'function') ps.initWithPath(exePath);
+                    else ps.init(exePath);
+                }
+                const proc = Components.classes['@mozilla.org/process/util;1'].createInstance(
+                    Components.interfaces.nsIProcess
+                );
+                proc.init(ps);
+                const args = [scriptPath];
+                proc.runAsync(args, args.length, {
+                    observe(subject, topic) {
+                        log('Ctrl+V système terminé :', topic);
+                        resolve(topic === 'process-finished');
+                    },
+                });
+                log('Ctrl+V AHK lancé (Send ^v)');
+            } catch (e) {
+                log('ERREUR lancement Ctrl+V système :', e);
+                resolve(false);
+            }
+        });
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -505,11 +545,13 @@
             attachFrameScript(g.browser);
             await loadTool();
             await waitForReady();
-            log('Dropzone prête → écriture clipboard puis paste natif');
+            log('Dropzone prête → écriture clipboard puis Ctrl+V système');
 
             const snap = snapshotClipboard();
             await writeImageToClipboard(filePath);
-            await triggerPaste();
+            await focusGhost();
+            log('Focus ghost OK → Ctrl+V AHK');
+            await sendSystemCtrlV();
 
             // Restauration presse-papier : en réserve (polish)
             if (false) setTimeout(() => restoreClipboard(snap), 2000);
@@ -549,9 +591,9 @@
         }
         window.__removeBGPatched = true;
 
-        log('init v0.6.2-revert');
+        log('init v0.9.5');
         // Header debug.log (purge copyDebug — réécrite par le 1er log en overwrite)
-        logFile('chrome', '──── session start v0.6.2-revert ────');
+        logFile('chrome', '──── session start v0.9.5 ────');
         probeEnvironment();
         initDownloadsListener();
     }
