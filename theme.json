@@ -1,0 +1,17 @@
+{
+  "id": "RemoveBG",
+  "name": "Remove BG",
+  "description": "Retrait de BG sans friction : toast au download, ghost browser off-screen, captcha auto-revealed",
+  "author": "Impre",
+  "version": "0.1.0",
+  "js": true,
+  "scripts": {
+    "removebg.uc.js": {
+      "name": "RemoveBG Engine",
+      "description": "Downloads listener + ghost browser + image injection + captcha reveal",
+      "include": ["chrome://browser/content/browser.xhtml"]
+    }
+  },
+  "tags": ["Javascript", "RemoveBG"],
+  "fork": ["zen"]
+}
