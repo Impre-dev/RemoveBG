@@ -11,14 +11,17 @@
     overflow: hidden;
 }
 
-/* Révélation : simple swap CSS du MÊME browser — zéro reload */
+/* Révélation : simple swap CSS du MÊME browser — zéro reload.
+   TEST resize carré (420×440) SANS le frame script d'injection : le 440
+   n'a jamais été testé isolément (01:28) — le coupable de la régression
+   collage était l'injection DOM, pas la taille. */
 #removebg-ghost.rmbg-ghost-visible {
     left: auto;
     top: auto;
     right: 16px;
     bottom: 16px;
     width: 420px;
-    height: 640px;
+    height: 440px;
     border: 1px solid rgba(255, 255, 255, 0.08);
     box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
 }
