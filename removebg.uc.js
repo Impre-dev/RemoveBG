@@ -35,7 +35,7 @@
     const MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif']);
     const FILE_EXTS = new Set(['jpg', 'jpeg', 'png', 'webp', 'avif']);
 
-    const TOAST_SECONDS = 7;
+    const TOAST_SECONDS = 4;
 
     const HTML_NS = 'http://www.w3.org/1999/xhtml';
 
@@ -108,49 +108,37 @@
         const body = doc.createElementNS(HTML_NS, 'div');
         body.className = 'rmbg-body';
 
+        const title = doc.createElementNS(HTML_NS, 'div');
+        title.className = 'rmbg-title';
+        title.textContent = "Supprimer le fond de l'image ?";
+
         const name = doc.createElementNS(HTML_NS, 'div');
         name.className = 'rmbg-name';
 
-        const question = doc.createElementNS(HTML_NS, 'div');
-        question.className = 'rmbg-q';
-        question.textContent = 'Remove background?';
-
-        const actions = doc.createElementNS(HTML_NS, 'div');
-        actions.className = 'rmbg-actions';
-
-        const yes = doc.createElementNS(HTML_NS, 'button');
-        yes.className = 'rmbg-yes';
-        yes.textContent = 'Remove BG';
-
-        const close = doc.createElementNS(HTML_NS, 'button');
-        close.className = 'rmbg-close';
-        close.textContent = '✕';
-
-        const countdown = doc.createElementNS(HTML_NS, 'div');
+        // Compteur : barre en bas du toast, se vide en 4s — transitionend
+        // déclenche le dismiss (zéro timer JS).
+        const countdown = doc.createElementNS(HTML_NS, 'span');
         countdown.className = 'rmbg-countdown';
 
-        actions.appendChild(yes);
-        body.appendChild(name);
-        body.appendChild(question);
-        body.appendChild(actions);
         root.appendChild(thumb);
+        body.appendChild(title);
+        body.appendChild(name);
         root.appendChild(body);
-        root.appendChild(close);
         root.appendChild(countdown);
         doc.documentElement.appendChild(root);
 
-        toastEls = { root, thumb, name, yes, close, countdown, current: null };
+        toastEls = { root, thumb, name, countdown, current: null };
 
-        yes.addEventListener('click', () => {
+        // Le toast ENTIER est le bouton : clic → ouvre l'overlay. Sinon
+        // auto-dismiss 4s (évt transitionend).
+        root.addEventListener('click', () => {
             const d = toastEls.current;
             const path = d?.target?.path;
             dismissToast();
             if (path) startRemoveBG(path);
         });
 
-        close.addEventListener('click', dismissToast);
-
-        // Auto-dismiss : transition CSS 7s → event transitionend (zéro timer)
+        // Auto-dismiss : transition CSS 4s → event transitionend (zéro timer)
         countdown.addEventListener('transitionend', (e) => {
             if (e.propertyName === 'width') dismissToast();
         });
@@ -175,13 +163,14 @@
         t.name.title = filename;
         t.thumb.style.backgroundImage = `url("${PathUtils.toFileURI(path)}")`;
 
-        // Relancer la transition : retirer .run, forcer un reflow, remettre
+        // Afficher AVANT de lancer la transition : une transition ne démarre
+        // jamais sur un élément display:none — le width passait à 0 sans
+        // transition, transitionend ne partait jamais → toast immortel.
+        t.root.hidden = false;
         t.countdown.classList.remove('run');
         void t.countdown.offsetWidth;
         t.countdown.style.transitionDuration = `${TOAST_SECONDS}s`;
         t.countdown.classList.add('run');
-
-        t.root.hidden = false;
         log('Toast affiché →', filename);
     }
 
