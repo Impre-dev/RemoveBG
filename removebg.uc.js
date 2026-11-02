@@ -342,6 +342,29 @@
         } catch (e) {}
     };
     tryObserve();
+    // CSS d'épuration — scoped au ghost UNIQUEMENT : injecté par CE frame
+    // script (jamais via userContent.css, qui toucherait les tabs photoroom
+    // normales). Le CSS vit dans le mod, versionné avec le repo.
+    const RMBG_CSS = [
+        // Épuration : rempli à l'étape dump-DOM (virer marketing, before/after,
+        // pastilles couleur ; garder dropzone, preview, download, captcha).
+    ].join('\n');
+    const injectCss = () => {
+        try {
+            const d = content.document;
+            if (!d.documentElement) return;
+            let st = d.getElementById('rmbg-scoped-css');
+            if (!st) {
+                st = d.createElement('style');
+                st.id = 'rmbg-scoped-css';
+                (d.head || d.documentElement).appendChild(st);
+            }
+            st.textContent = RMBG_CSS;
+        } catch (e) {}
+    };
+    injectCss();
+    addEventListener('DOMContentLoaded', injectCss, true);
+    addEventListener('pageshow', injectCss, true);
     addEventListener('DOMContentLoaded', tryObserve, true);
     addEventListener('pageshow', tryObserve, true);
     addMessageListener('RemoveBG:DoPaste', () => {
