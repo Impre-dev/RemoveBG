@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name           RemoveBG — Engine
-// @version        0.13.0
+// @version        0.13.1
 // @description    Retrait de BG sans friction : toast au download, ghost browser, paste natif
 // @author         Impre
 // @include        main
@@ -190,7 +190,13 @@
         t.mode = mode;
         t.current = download;
         t.title.textContent = title;
-        t.name.textContent = name;
+        // Nom tronqué côté affichage seulement — le vrai nom reste au survol
+        // (title) et sert tel quel au fichier sauvegardé.
+        const MAX_NAME_CHARS = 28;
+        const shown = name.length > MAX_NAME_CHARS
+            ? name.slice(0, MAX_NAME_CHARS - 1).trimEnd() + '…'
+            : name;
+        t.name.textContent = shown;
         t.name.title = name;
         if (thumbPath) t.thumb.style.backgroundImage = `url("${PathUtils.toFileURI(thumbPath)}")`;
         // Afficher AVANT de lancer la transition : une transition ne démarre
@@ -1163,9 +1169,9 @@
         }
         window.__removeBGPatched = true;
 
-        log('init v0.13.0');
+        log('init v0.13.1');
         // Header debug.log (purge copyDebug — réécrite par le 1er log en overwrite)
-        logFile('chrome', '──── session start v0.13.0 ────');
+        logFile('chrome', '──── session start v0.13.1 ────');
         probeEnvironment();
         initDownloadsListener();
         initSiteStyleSheet();
