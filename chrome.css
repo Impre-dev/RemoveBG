@@ -171,3 +171,40 @@
     width: 0;
     transition: width 4s linear;
 }
+
+/* Modes informatifs (traitement) : le toast n'est plus un bouton. */
+#removebg-toast.rmbg-busy {
+    cursor: default;
+}
+
+#removebg-toast.rmbg-busy:hover {
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Traitement : la jauge 15 s reste le filet d'échec (transitionend sur
+   width) mais devient INVISIBLE — à l'écran, un balayage indéterminé :
+   deux états de nature différente, jamais deux minuteurs qui se suivent. */
+#removebg-toast.rmbg-busy .rmbg-countdown {
+    opacity: 0;
+}
+
+#removebg-toast .rmbg-shimmer {
+    display: none;
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.07), transparent);
+    animation: rmbg-shimmer 1.4s infinite linear;
+    pointer-events: none;
+}
+
+#removebg-toast.rmbg-busy .rmbg-shimmer {
+    display: block;
+}
+
+@keyframes rmbg-shimmer {
+    from { transform: translateX(-100%); }
+    to   { transform: translateX(100%); }
+}

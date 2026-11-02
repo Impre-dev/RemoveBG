@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name           RemoveBG — Engine
-// @version        0.10.0
+// @version        0.11.0
 // @description    Retrait de BG sans friction : toast au download, ghost browser, paste natif
 // @author         Impre
 // @include        main
@@ -39,6 +39,7 @@
     const FILE_EXTS = new Set(['jpg', 'jpeg', 'png', 'webp', 'avif']);
 
     const TOAST_SECONDS = 4;
+    const PROCESSING_SECONDS = 15; // filet d'échec — jauge MASQUÉE en mode traitement
 
     const HTML_NS = 'http://www.w3.org/1999/xhtml';
 
@@ -128,22 +129,33 @@
         body.appendChild(name);
         root.appendChild(body);
         root.appendChild(countdown);
+        // Shimmer du mode traitement : nature visuelle DIFFÉRENTE de la
+        // jauge — jamais deux minuteurs qui se suivent au même endroit.
+        const shimmer = doc.createElementNS(HTML_NS, 'span');
+        shimmer.className = 'rmbg-shimmer';
+        root.appendChild(shimmer);
         doc.documentElement.appendChild(root);
 
-        toastEls = { root, thumb, name, countdown, current: null };
+        toastEls = { root, thumb, title, body, name, countdown, shimmer, current: null, mode: null };
 
-        // Le toast ENTIER est le bouton : clic → ouvre l'overlay. Sinon
-        // auto-dismiss 4s (évt transitionend).
+        // Le toast ENTIER est le bouton en mode « ask » uniquement —
+        // traitement/fin sont informatifs (curseur default, clic no-op).
         root.addEventListener('click', () => {
-            const d = toastEls.current;
+            const t = toastEls;
+            if (t.mode !== 'ask') return;
+            const d = t.current;
             const path = d?.target?.path;
             dismissToast();
             if (path) startRemoveBG(path);
         });
 
-        // Auto-dismiss : transition CSS 4s → event transitionend (zéro timer)
+        // Auto-dismiss : transition CSS → event transitionend (zéro timer).
+        // ask = fin naturelle · processing = filet d'échec (résultat jamais
+        // venu) · done = fin naturelle.
         countdown.addEventListener('transitionend', (e) => {
-            if (e.propertyName === 'width') dismissToast();
+            if (e.propertyName !== 'width') return;
+            if (toastEls.mode === 'processing') log('Timeout processing — résultat jamais venu (elapsed=' + e.elapsedTime.toFixed(1) + 's)');
+            dismissToast();
         });
 
         return toastEls;
@@ -151,29 +163,51 @@
 
     function dismissToast() {
         if (!toastEls) return;
+        toastEls.mode = null;
         toastEls.countdown.classList.remove('run');
         toastEls.root.hidden = true;
         toastEls.current = null;
     }
 
-    function showToast(download) {
+    // Un seul objet UI raconte le cycle : ask (« Supprimer le fond ? »,
+    // cliquable) → processing (« Suppression du fond… », shimmer, jauge
+    // 15 s masquée = filet d'échec, interrompue au résultat). Zéro timer JS.
+    function presentToast({ title, name, thumbPath, seconds, mode, download = null }) {
         const t = getToast();
+        t.mode = mode;
         t.current = download;
-
-        const path = download.target?.path || '';
-        const filename = path.split(/[\\/]/).pop() || 'image';
-        t.name.textContent = filename;
-        t.name.title = filename;
-        t.thumb.style.backgroundImage = `url("${PathUtils.toFileURI(path)}")`;
-
+        t.title.textContent = title;
+        t.name.textContent = name;
+        t.name.title = name;
+        if (thumbPath) t.thumb.style.backgroundImage = `url("${PathUtils.toFileURI(thumbPath)}")`;
         // Afficher AVANT de lancer la transition : une transition ne démarre
-        // jamais sur un élément display:none — le width passait à 0 sans
-        // transition, transitionend ne partait jamais → toast immortel.
+        // jamais sur un élément display:none → toast immortel.
+        t.root.classList.toggle('rmbg-busy', mode !== 'ask');
         t.root.hidden = false;
         t.countdown.classList.remove('run');
+        // Reset EXPLICITE de la largeur : annuler une transition (remove de
+        // .run) laisse la propriété à sa valeur COURANTE (spec) — la jauge
+        // repartait de l'endroit du clic et le filet tirait trop tôt.
+        t.countdown.style.transition = 'none';
+        t.countdown.style.width = '100%';
         void t.countdown.offsetWidth;
-        t.countdown.style.transitionDuration = `${TOAST_SECONDS}s`;
+        t.countdown.style.transition = '';
+        t.countdown.style.width = '';
+        t.countdown.style.transitionDuration = `${seconds}s`;
         t.countdown.classList.add('run');
+    }
+
+    function showToast(download) {
+        const path = download.target?.path || '';
+        const filename = path.split(/[\\/]/).pop() || 'image';
+        presentToast({
+            title: "Supprimer le fond de l'image ?",
+            name: filename,
+            thumbPath: path,
+            seconds: TOAST_SECONDS,
+            mode: 'ask',
+            download,
+        });
         log('Toast affiché →', filename);
     }
 
@@ -316,6 +350,9 @@
         g.browser.style.marginTop = -y + 'px';
         g.wrap.style.width = rect.w + 'px';
         g.wrap.style.height = rect.h + 'px';
+        // Relais visuel : le toast « Traitement… » s'efface pendant que le
+        // damier apparaît (jamais un « ask » d'un autre DL en vol).
+        if (toastEls?.mode === 'processing') dismissToast();
         revealGhost();
         log(`Résultat cadré ${Math.round(rect.w)}x${Math.round(rect.h)} @ ${Math.round(x)},${Math.round(y)} — overlay révélé`);
     }
@@ -831,6 +868,15 @@
         try {
             log('Remove BG demandé →', filePath);
             currentSource = { path: filePath };
+            // Relais visuel : le toast passe en « Traitement… » (shimmer —
+            // jauge 15 s masquée = filet d'échec, interrompue au résultat).
+            presentToast({
+                title: 'Suppression du fond…',
+                name: filePath.split(/[\\/]/).pop() || 'image',
+                thumbPath: filePath,
+                seconds: PROCESSING_SECONDS,
+                mode: 'processing',
+            });
             if (pipelineActive) {
                 // Run précédent jamais refermé (résultat non venu) : remise
                 // à zéro propre — le re-load repart comme un 1er cycle.
@@ -1016,9 +1062,9 @@
         }
         window.__removeBGPatched = true;
 
-        log('init v0.10.0');
+        log('init v0.11.0');
         // Header debug.log (purge copyDebug — réécrite par le 1er log en overwrite)
-        logFile('chrome', '──── session start v0.10.0 ────');
+        logFile('chrome', '──── session start v0.11.0 ────');
         probeEnvironment();
         initDownloadsListener();
         initSiteStyleSheet();

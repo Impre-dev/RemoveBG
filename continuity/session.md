@@ -2,19 +2,19 @@
 
 ## État courant
 
-**PHASE 8 (vision setup idéal) V1 FONCTIONNELLE — constat opérateur 04:2x : « ça marche ».**
-- Cycle complet : DL → toast → clic → traitement 100% hors champ → l'overlay
-  apparaît DÉJÀ recadré sur le rectangle damier seul → clic → `-nobg.png`
-  écrit à côté de l'original → envol. Deux clics, zéro site vu.
-- Le paris blob:/data: du src a tenu (fetch local OK, zéro réseau).
-- Recadrage : browser taille fixe + wrap rétrécit + margins négatifs — le
-  site ne reflow pas, la mesure reste exacte.
-- Listeners chrome liés UNE fois par browser (le frame script, lui, se
-  recharge à chaque nav — D13 inchangé).
-
-**Chantier ouvert : le feedback (mode aveugle).** Rien ne signale le
-  processing (3-5 s muettes) ni le DL réussi (l'overlay s'envole en
-  silence). Options proposées, décision opérateur en cours.
+**Étape 1 (toast de chargement) VALIDÉE — v0.11.0 sur base revertée a1ab9c1.**
+- Toast 3 états : ask (« Supprimer le fond ? », jauge 4 s) → traitement
+  (« Suppression du fond… », shimmer, jauge 15 s MASQUÉE = filet d'échec,
+  reset largeur explicite) → le damier arrive, le toast s'efface.
+- **Save TOUJOURS cassé** : `ERREUR saveResult {}` ×3 — hérité de v0.10.0 :
+  la phase 8 n'a jamais été validée jusqu'au save (seulement jusqu'au
+  damier). Transport ArrayBuffer via message manager = suspect n°1.
+  L'overlay ne se ferme donc pas après clic damier.
+- **File priorisée** :
+  ⭐ Étape 2 : fix transport save (base64) + voile vert ✓ sur l'image +
+     fermeture animée (transform/opacity only) — design voté opérateur
+  · couleurs des états du toast (décision à l'œil, reportée)
+  · restauration clipboard (en réserve), micro-retouches à l'œil
 
 ## Journal
 - [jalon] Phase 0-4 (cf. page du 01/11) : squelette → injection image (v0.9.5)
@@ -82,3 +82,18 @@
   chrome × 1/browser. v0.10.0
 - [chantier, 04:2x] **Feedback ouvert (mode aveugle)** : rien pendant le
   processing (3-5 s), rien au DL (envol silencieux). Options en discussion
+- [régression + REVERT, 04:39-05:16] v0.10.1-0.10.6 (toast 3 états +
+  restructuration injection + captcha reveal + sondes) → cascade de pannes
+  → **revert à a1ab9c1 constaté ✓**. Leçons gravées :
+  (a) `loadFrameScript(uri, true)` = inscription PERSISTANTE — chaque appel
+  empile une instance (×3 → FetchResult ×3, writes concurrents) ;
+  (b) annuler une transition (remove de classe) laisse la propriété à sa
+  valeur COURANTE → jauge repartie de ~50% (elapsed=7.6s au lieu de 15) ;
+  (c) une restructuration d'injection et un redesign UI ne voyagent jamais
+  dans le même commit.
+- [découverte, 05:21] `ERREUR saveResult {}` ×3 AUSSI en v0.10.0 : le save
+  n'a jamais marché (ArrayBuffer via message manager suspect) — l'overlay
+  ne ferme pas car `closeGhostAfterResult()` jamais atteint
+- [jalon, 05:2x] **Étape 1 VALIDÉE (constat opérateur « Validé GG »)** :
+  toast de chargement — shimmer + filet masqué 15 s + reset largeur
+  explicite, sur base saine, frame script/injection intacts. v0.11.0
