@@ -218,23 +218,38 @@
 
     function getGhost() {
         if (ghost) return ghost;
+        // Wrapper chrome : le browser + le bouton ✕ vivent dedans — le ✕
+        // reste cliquable PAR-DESSUS le content (jamais dans le DOM du
+        // site, cf. leçon injection DOM du 02/11).
+        const wrap = document.createElementNS(HTML_NS, 'div');
+        wrap.id = 'removebg-ghost-wrap';
+
         const b = document.createXULElement('browser');
         b.id = 'removebg-ghost';
         b.setAttribute('type', 'content');
         b.setAttribute('remote', 'true');
         b.setAttribute('disablehistory', 'true');
-        document.documentElement.appendChild(b);
-        ghost = { browser: b, mmAttached: false };
+
+        const close = document.createElementNS(HTML_NS, 'button');
+        close.id = 'removebg-ghost-close';
+        close.textContent = '✕';
+        close.title = 'Fermer l\'overlay';
+        close.addEventListener('click', () => hideGhost());
+
+        wrap.appendChild(b);
+        wrap.appendChild(close);
+        document.documentElement.appendChild(wrap);
+        ghost = { browser: b, wrap, mmAttached: false };
         log('Ghost browser créé');
         return ghost;
     }
 
     function revealGhost() {
-        getGhost().browser.classList.add('rmbg-ghost-visible');
+        getGhost().wrap.classList.add('rmbg-ghost-visible');
     }
 
     function hideGhost() {
-        ghost?.browser.classList.remove('rmbg-ghost-visible');
+        ghost?.wrap.classList.remove('rmbg-ghost-visible');
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -628,6 +643,86 @@
         return checks;
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    //  PHASE 7 — Épuration du site : AGENT STYLESHEET (zéro injection DOM)
+    //  Leçon du 02/11 : injecter un <style> dans le content du tool tue le
+    //  collage (même vide — constaté 01:15-01:26). La voie sûre : une
+    //  feuille enregistrée côté chrome (mécanique de userContent.css, mais
+    //  portée par le mod, unregister au unload). Scopée par domaine : les
+    //  tabs photoroom normales reçoivent aussi le style (non utilisé par
+    //  l'opérateur). AGENT_SHEET = prévalence max, pas besoin de !important.
+    // ═══════════════════════════════════════════════════════════════
+
+    const SITE_CSS = `@-moz-document domain("photoroom.com") {
+    /* ═══ ÉPURATION — construite sur le dump DOM du 02/11 (3.6 Mo) ═══
+       Ancres stables : attributs sémantiques + :has() sur parents directs.
+       JAMAIS .component-400 seul : c'est la span du label Download ! */
+
+    /* ─── Header / nav ─── */
+    header,
+    [aria-label="Open navigation"],
+    .start-0.end-0.top-0.z-50 { display: none !important; }
+
+    /* ─── Landing B2B (tabs stats, hero marketing) ─── */
+    [role="tablist"], [role="tab"] { display: none !important; }
+    .mx-auto.flex.max-w-\\[1072px\\].flex-col.items-center.text-center,
+    .component-light-400.text-content-secondary.mx-auto.mt-6,
+    .body-light-600.text-content-secondary { display: none !important; }
+
+    /* ─── Bloc rater-promo « Want to land 50% more sales? » ───
+       Le ✕ du banner = [data-rater-promo-dismiss], enfant direct du
+       banner → :has(>) cible LE banner uniquement. */
+    div:has(> [data-rater-promo-dismiss]) { display: none !important; }
+
+    /* ─── Toggle Before/After (radix radiogroup, unique) ─── */
+    [role="radiogroup"] { display: none !important; }
+
+    /* ─── Pastilles couleur de fond (container direct de la pastille
+       conic-gradient) ─── */
+    div:has(> button[class*="conic-gradient"]) { display: none !important; }
+
+    /* ─── Barre de CTAs : Download = DERNIER bouton de la rangée (ordre
+       dump) → on tue les 4 autres sans le toucher. ─── */
+    div:has(> button > span.truncate) > button:not(:last-child) {
+        display: none !important;
+    }
+
+    /* ─── Breadcrumb Home > Tools > Background Remover ─── */
+    a[href="/tools"] { display: none !important; }
+
+    /* ─── Compaction : les containers du tool ne décident plus de la
+       hauteur — le carré du ghost commande. ─── */
+    main { min-height: 0 !important; }
+    .bg-surface-subtle.px-4,
+    .rounded-area-500.shadow-800 {
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: 100% !important;
+    }
+
+    /* ─── Scroll interdit : le carré est fini, pas de dépassement ─── */
+    html, body { overflow: hidden !important; height: 100% !important; }
+}`;
+
+    function initSiteStyleSheet() {
+        try {
+            const uri = Services.io.newURI(
+                'data:text/css;charset=utf-8,' + encodeURIComponent(SITE_CSS)
+            );
+            const sss = Components.classes['@mozilla.org/content/style-sheet-service;1']
+                .getService(Components.interfaces.nsIStyleSheetService);
+            if (!sss.sheetRegistered(uri, sss.AGENT_SHEET)) {
+                sss.loadAndRegisterSheet(uri, sss.AGENT_SHEET);
+                log('Agent stylesheet enregistrée (épuration site)');
+            }
+            window.addEventListener('unload', () => {
+                try { sss.unregisterSheet(uri, sss.AGENT_SHEET); } catch (e) {}
+            }, { once: true });
+        } catch (e) {
+            log('ERREUR agent stylesheet :', e);
+        }
+    }
+
     function init() {
         if (window.__removeBGPatched) return;
         if (!window.gBrowser || !gBrowser.tabContainer) {
@@ -641,6 +736,7 @@
         logFile('chrome', '──── session start v0.9.5 ────');
         probeEnvironment();
         initDownloadsListener();
+        initSiteStyleSheet();
     }
 
     if (document.readyState === 'complete' || document.readyState === 'interactive') init();
