@@ -234,7 +234,12 @@
         close.id = 'removebg-ghost-close';
         close.textContent = '✕';
         close.title = 'Fermer l\'overlay';
-        close.addEventListener('click', () => hideGhost());
+        close.addEventListener('click', () => {
+            // Purge complète : sinon le tool reste en état « résultat N-1 »
+            // (et le re-DL hérite d'une session résiduelle → D13).
+            purgeGhostTool();
+            log('Overlay fermé manuellement');
+        });
 
         wrap.appendChild(b);
         wrap.appendChild(close);
@@ -260,7 +265,25 @@
     //  ce DL et refermer l'overlay derrière lui.
     // ═══════════════════════════════════════════════════════════════════
 
-    function closeGhostAfterResult() {
+    function purgeSiteData() {
+        // D13 : le re-load du tool avec session résiduelle (cookies,
+        // localStorage, IndexedDB websiteHandoff) re-render le turnstile
+        // AVANT la dropzone et l'api.js est ORB-bloquée → l'UI ne monte
+        // jamais. Chaque fermeture = session photoroom détruite : chaque
+        // re-DL repart exactement comme un 1er load (qui, lui, marche).
+        try {
+            const principal = Services.scriptSecurityManager
+                .createContentPrincipalFromOrigin('https://www.photoroom.com');
+            const flags = Components.interfaces.nsIClearDataService.CLEAR_ALL;
+            Services.clearData.deleteDataFromPrincipal(principal, false, flags, () => {
+                log('Site-data photoroom purgé (cookies + storage)');
+            });
+        } catch (e) {
+            log('ERREUR purge site-data :', e);
+        }
+    }
+
+    function purgeGhostTool() {
         const g = getGhost();
         hideGhost();
         try {
@@ -273,6 +296,11 @@
             log('ERREUR purge ghost :', e);
         }
         pipelineActive = false;
+        purgeSiteData();
+    }
+
+    function closeGhostAfterResult() {
+        purgeGhostTool();
         log('Overlay fermé — résultat téléchargé');
     }
 
@@ -298,6 +326,12 @@
         );
         const uri = Services.io.newURI(TOOL_URL);
         g.browser.loadURI(uri, { triggeringPrincipal: principal });
+        // D13 (02/11) : le frame script initial ne survit pas au cycle
+        // purge about:blank → re-nav (site prêt, collage manuel OK, mais
+        // jamais de Ready) → on le re-charge à CHAQUE navigation. Les
+        // doublons de listeners sont bénins (Ready = resolve no-op).
+        ghost.mmAttached = false;
+        attachFrameScript(g.browser);
         log('Navigation lancée');
     }
 
@@ -381,6 +415,7 @@
     )}`;
 
     let pendingReady = null;
+    let lastReadyAt = 0; // timestamp du dernier Ready reçu (race condition 2e cycle)
 
     function attachFrameScript(browser) {
         if (ghost.mmAttached) return;
@@ -388,6 +423,7 @@
         const mm = browser.messageManager;
         mm.loadFrameScript(FRAME_SCRIPT_URI, true);
         mm.addMessageListener('RemoveBG:Ready', () => {
+            lastReadyAt = Date.now();
             log('Dropzone prête (frame script)');
             pendingReady?.resolve();
         });
@@ -406,6 +442,17 @@
 
     function waitForReady() {
         return new Promise((res) => {
+            // Race condition du 2e cycle : en re-navigation, le tool se
+            // monte depuis le cache disque PLUS VITE que le chrome
+            // n'atteint waitForReady() — le message Ready est consommé
+            // avant l'abonnement, la promise pendrait à jamais et le
+            // clipboard ne serait jamais écrit (bug « 1ère image
+            // réaffichée »). Si un Ready est tout récent, ce chargement
+            // est déjà prêt.
+            if (Date.now() - lastReadyAt < 5000) {
+                res();
+                return;
+            }
             pendingReady = { resolve: res };
         });
     }
