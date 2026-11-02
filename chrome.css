@@ -208,3 +208,52 @@
     from { transform: translateX(-100%); }
     to   { transform: translateX(100%); }
 }
+
+/* ═══ Étape 2 — confirmation DL : voile vert transparent + chevron ✓ sur
+   l'image, puis envol du carré (transform/opacity only = composited). */
+#removebg-ghost-wrap .rmbg-veil {
+    position: absolute;
+    inset: 0;
+    z-index: 7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(48, 209, 88, 0.18);
+    opacity: 0;
+    pointer-events: none;
+}
+
+#removebg-ghost-wrap .rmbg-veil.rmbg-veil-in {
+    animation: rmbg-veil-in 350ms ease forwards;
+}
+
+@keyframes rmbg-veil-in {
+    to { opacity: 1; }
+}
+
+#removebg-ghost-wrap .rmbg-veil-check {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: rgba(48, 209, 88, 0.92);
+    color: #fff;
+    font: 700 34px/56px system-ui, sans-serif;
+    text-align: center;
+    transform: scale(0.3);
+}
+
+.rmbg-veil-in .rmbg-veil-check {
+    animation: rmbg-check-pop 350ms cubic-bezier(0.2, 1.4, 0.4, 1) forwards;
+}
+
+@keyframes rmbg-check-pop {
+    to { transform: scale(1); }
+}
+
+#removebg-ghost-wrap.rmbg-closing {
+    animation: rmbg-close 380ms ease-in-out 400ms forwards;
+}
+
+@keyframes rmbg-close {
+    to { opacity: 0; transform: scale(0.92); }
+}

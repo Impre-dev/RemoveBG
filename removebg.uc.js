@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name           RemoveBG — Engine
-// @version        0.11.0
+// @version        0.13.0
 // @description    Retrait de BG sans friction : toast au download, ghost browser, paste natif
 // @author         Impre
 // @include        main
@@ -53,10 +53,23 @@
 
     function log(...args) {
         const msg = args
-            .map((a) => (typeof a === 'string' ? a : JSON.stringify(a)))
+            .map((a) => {
+                if (typeof a === 'string') return a;
+                if (a instanceof Error) return a.message;
+                // DOMException & co : message non-énumérable → JSON donnait {}
+                if (a && typeof a === 'object' && 'message' in a) return `${a.name ?? 'err'}: ${a.message}`;
+                return JSON.stringify(a);
+            })
             .join(' ');
         console.log(LOG_PREFIX, ...args);
         logFile('chrome', msg);
+    }
+
+    // Flux verbeux (événements fréquents) — muet par défaut ; basculer
+    // DEBUG_LOG à true pour instrumenter une session de diagnostic.
+    const DEBUG_LOG = false;
+    function logDebug(...args) {
+        if (DEBUG_LOG) log(...args);
     }
 
     // ── Debug log fichier (copyDebug — purge après diagnostic, gitigné) ──
@@ -222,7 +235,7 @@
                 // porte l'origine) ne déclenche JAMAIS le toast.
                 if (spec.includes('photoroom.com')) {
                     download.__removebgResult = true;
-                    log('DL photoroom ajouté — source:', spec);
+                    logDebug('DL photoroom ajouté — source:', spec);
                     return;
                 }
                 if (isImageDownload(download)) {
@@ -298,7 +311,7 @@
         wrap.appendChild(close);
         document.documentElement.appendChild(wrap);
         ghost = { browser: b, wrap };
-        log('Ghost browser créé');
+        logDebug('Ghost browser créé');
         return ghost;
     }
 
@@ -336,6 +349,20 @@
         'image/avif': 'avif',
     };
 
+    // Son de succès (level-up.mp3 embarqué, choix opérateur — lu nativement
+    // par le Audio() du chrome, zéro conversion).
+    function playSuccess() {
+        try {
+            const audio = new Audio(PathUtils.toFileURI(
+                PathUtils.join(PathUtils.profileDir, 'chrome', 'sine-mods', 'RemoveBG', 'level-up.mp3')
+            ));
+            audio.volume = 0.5;
+            audio.play();
+        } catch (e) {
+            log('ERREUR son :', e?.message || String(e));
+        }
+    }
+
     function applyResultCrop(rect) {
         const g = getGhost();
         const br = g.browser.getBoundingClientRect(); // taille actuelle (≈ wrap 420x440)
@@ -357,17 +384,59 @@
         log(`Résultat cadré ${Math.round(rect.w)}x${Math.round(rect.h)} @ ${Math.round(x)},${Math.round(y)} — overlay révélé`);
     }
 
-    async function saveResult({ buffer, mime }) {
+    // Base64 → bytes : une string frame→chrome passe toujours, un buffer
+    // pas forcément (leçon saveResult {}).
+    function b64ToBytes(b64) {
+        const bin = atob(b64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return bytes;
+    }
+
+    async function saveResult({ b64, mime, size }) {
         try {
             const ext = RESULT_EXT[mime] || 'png';
             const base = (currentSource?.path || 'image.png').replace(/\.[^./\\]+$/, '');
             const path = `${base}-nobg.${ext}`;
-            await IOUtils.write(path, buffer, { mode: 'overwrite' });
-            log('Résultat sauvegardé →', path);
-            closeGhostAfterResult();
+            await IOUtils.write(path, b64ToBytes(b64), { mode: 'overwrite' });
+            log(`Résultat sauvegardé (${Math.round((size || 0) / 1024)} Ko) →`, path);
+            playSuccess();
+            showResultVeil();
         } catch (e) {
-            log('ERREUR saveResult :', e);
+            // Log PARLANT : le `{}` historique masquait le message réel.
+            log('ERREUR saveResult :', e?.message || String(e));
         }
+    }
+
+    // Étape 2 — confirmation DL : voile vert transparent + chevron ✓ sur
+    // l'image, puis envol du carré. Enchaînement par animationend —
+    // transform/opacity only (composited, zéro layout), zéro timer JS.
+    function showResultVeil() {
+        const g = getGhost();
+        if (!g.wrap.__rmbgCloseBound) {
+            g.wrap.__rmbgCloseBound = true;
+            g.wrap.addEventListener('animationend', (e) => {
+                if (e.animationName === 'rmbg-close') purgeGhostTool();
+            });
+        }
+        let veil = g.wrap.querySelector('.rmbg-veil');
+        if (!veil) {
+            veil = document.createElementNS(HTML_NS, 'div');
+            veil.className = 'rmbg-veil';
+            const check = document.createElementNS(HTML_NS, 'span');
+            check.className = 'rmbg-veil-check';
+            check.textContent = '✓';
+            veil.appendChild(check);
+            veil.addEventListener('animationend', (e) => {
+                if (e.animationName === 'rmbg-veil-in') g.wrap.classList.add('rmbg-closing');
+            });
+            g.wrap.appendChild(veil);
+        }
+        // Redémarrage propre si un cycle précédent a laissé des classes.
+        veil.classList.remove('rmbg-veil-in');
+        g.wrap.classList.remove('rmbg-closing');
+        void veil.offsetWidth;
+        veil.classList.add('rmbg-veil-in');
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -389,7 +458,7 @@
                 .createContentPrincipalFromOrigin('https://www.photoroom.com');
             const flags = Components.interfaces.nsIClearDataService.CLEAR_ALL;
             Services.clearData.deleteDataFromPrincipal(principal, false, flags, () => {
-                log('Site-data photoroom purgé (cookies + storage)');
+                logDebug('Site-data photoroom purgé (cookies + storage)');
             });
         } catch (e) {
             log('ERREUR purge site-data :', e);
@@ -407,6 +476,10 @@
         g.browser.style.marginTop = '';
         g.wrap.style.width = '';
         g.wrap.style.height = '';
+        // Cleanup du voile de confirmation (étape 2) + classe d'envol.
+        const veil = g.wrap.querySelector('.rmbg-veil');
+        if (veil) veil.remove();
+        g.wrap.classList.remove('rmbg-closing');
         try {
             // Purge du tool : l'élément reste (réutilisé tel quel), la page
             // est déchargée. loadTool() re-naviguera au prochain run.
@@ -439,7 +512,7 @@
         const g = getGhost();
         const current = g.browser.currentURI?.spec;
         if (current && current.startsWith('https://www.photoroom.com')) {
-            log('Tool déjà chargé — réutilisation (zéro reload)');
+            logDebug('Tool déjà chargé — réutilisation (zéro reload)');
             return;
         }
         const principal = Services.scriptSecurityManager.createContentPrincipalFromOrigin(
@@ -453,7 +526,7 @@
         // (Les listeners chrome, eux, sont liés une seule fois — cf.
         // attachFrameScript.)
         attachFrameScript(g.browser);
-        log('Navigation lancée');
+        logDebug('Navigation lancée');
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -595,12 +668,20 @@
                 }
                 const resp = await fetch(img.currentSrc || img.src);
                 const blob = await resp.blob();
-                const buf = await blob.arrayBuffer();
+                // Transport BLINDÉ : base64 (string). L'ArrayBuffer brut à
+                // travers le message manager faisait échouer le write côté
+                // chrome (ERREUR saveResult {} x3 — constats 03:40 + 04:18).
+                const bytes = new Uint8Array(await blob.arrayBuffer());
+                let bin = '';
+                for (let i = 0; i < bytes.length; i += 0x8000) {
+                    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+                }
                 sendAsyncMessage('RemoveBG:ResultBlob', {
-                    buffer: buf,
+                    b64: btoa(bin),
                     mime: blob.type || 'image/png',
                     nw: img.naturalWidth,
                     nh: img.naturalHeight,
+                    size: bytes.length,
                 });
             } catch (e) {
                 sendAsyncMessage('RemoveBG:ResultBlob', { err: String(e) });
@@ -627,18 +708,18 @@
         browser.__rmbgMmBound = true;
         mm.addMessageListener('RemoveBG:Ready', () => {
             lastReadyAt = Date.now();
-            log('Dropzone prête (frame script)');
+            logDebug('Dropzone prête (frame script)');
             pendingReady?.resolve();
         });
         mm.addMessageListener('RemoveBG:Pasted', (msg) => {
             const d = msg.data;
-            log(
+            logDebug(
                 `DIAG paste — files=${d.files} name=${d.name} type=${d.type} size=${d.size}` +
                     ` target=${d.target} active=${d.active} trusted=${d.trusted}`
             );
         });
         mm.addMessageListener('RemoveBG:Focused', () => {
-            log('Content window a le focus');
+            logDebug('Content window a le focus');
             pendingFocused?.resolve();
         });
         // ─── Phase 8 : recadrage damier + sauvegarde directe ───
@@ -781,7 +862,7 @@
         xfer.addDataFlavor('application/x-moz-nativeimage');
         xfer.setTransferData('application/x-moz-nativeimage', imgDecoded);
         Services.clipboard.setData(xfer, null, Services.clipboard.kGlobalClipboard);
-        log('Image écrite au clipboard (nativeimage depuis PNG) — helper screenshot');
+        logDebug('Image écrite au clipboard (nativeimage depuis PNG) — helper screenshot');
     }
 
     let pendingFocused = null;
@@ -848,11 +929,11 @@
                 const args = [scriptPath];
                 proc.runAsync(args, args.length, {
                     observe(subject, topic) {
-                        log('Ctrl+V système terminé :', topic);
+                        logDebug('Ctrl+V système terminé :', topic);
                         resolve(topic === 'process-finished');
                     },
                 });
-                log('Ctrl+V AHK lancé (Send ^v)');
+                logDebug('Ctrl+V AHK lancé (Send ^v)');
             } catch (e) {
                 log('ERREUR lancement Ctrl+V système :', e);
                 resolve(false);
@@ -890,12 +971,12 @@
             attachFrameScript(g.browser);
             await loadTool();
             await waitForReady();
-            log('Dropzone prête → écriture clipboard puis Ctrl+V système');
+            logDebug('Dropzone prête → écriture clipboard puis Ctrl+V système');
 
             const snap = snapshotClipboard();
             await writeImageToClipboard(filePath);
             await focusGhost();
-            log('Focus ghost OK → Ctrl+V AHK');
+            logDebug('Focus ghost OK → Ctrl+V AHK');
             await sendSystemCtrlV();
 
             // Restauration presse-papier : en réserve (polish)
@@ -923,7 +1004,7 @@
             })(),
         };
         for (const [name, ok] of Object.entries(checks)) {
-            log(`${ok ? '✓' : '✗'} ${name}`);
+            logDebug(`${ok ? '✓' : '✗'} ${name}`);
         }
         return checks;
     }
@@ -1062,9 +1143,9 @@
         }
         window.__removeBGPatched = true;
 
-        log('init v0.11.0');
+        log('init v0.13.0');
         // Header debug.log (purge copyDebug — réécrite par le 1er log en overwrite)
-        logFile('chrome', '──── session start v0.11.0 ────');
+        logFile('chrome', '──── session start v0.13.0 ────');
         probeEnvironment();
         initDownloadsListener();
         initSiteStyleSheet();
