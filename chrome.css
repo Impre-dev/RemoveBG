@@ -11,9 +11,7 @@
     overflow: hidden;
 }
 
-/* Révélation : simple swap CSS du MÊME browser — zéro reload.
-   Taille : 640px (état pré-épuration) — le resize carré reviendra APRÈS
-   diagnostic du collage et épuration du site. */
+/* Révélation : simple swap CSS du MÊME browser — zéro reload */
 #removebg-ghost.rmbg-ghost-visible {
     left: auto;
     top: auto;
