@@ -11,12 +11,17 @@
 
 /* Révélation : simple swap CSS du MÊME browser — zéro reload.
    Carré 420×440 : resize validé isolément (02/11 — l'injection DOM était
-   le seul coupable de la régression collage). */
+   le seul coupable de la régression collage). Fond VERRE : le browser est
+   transparent + le site rend transparent (agent sheet) → c'est CE fond
+   qu'on voit derrière le contenu, flouté sur la page Zen. */
 #removebg-ghost-wrap.rmbg-ghost-visible {
     left: auto;
     top: auto;
     right: 16px;
     bottom: 16px;
+    background: var(--utopia-urlbar-open-glass,
+            light-dark(rgba(4, 4, 4, 0.2), rgba(0, 0, 0, 0)));
+    backdrop-filter: blur(80px);
     border-radius: 12px;
     overflow: hidden;
     box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);

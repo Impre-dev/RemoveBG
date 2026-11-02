@@ -229,6 +229,10 @@
         b.setAttribute('type', 'content');
         b.setAttribute('remote', 'true');
         b.setAttribute('disablehistory', 'true');
+        // Canvas transparent : le fond blanc opaque de Gecko ne peint plus —
+        // le site (rendu transparent en agent sheet) laisse voir le fond
+        // verre du wrapper, floutant la page Zen derrière (comme le toast).
+        b.setAttribute('transparent', 'true');
 
         const close = document.createElementNS(HTML_NS, 'button');
         close.id = 'removebg-ghost-close';
@@ -734,8 +738,47 @@
         display: none !important;
     }
 
-    /* ─── Breadcrumb Home > Tools > Background Remover ─── */
-    a[href="/tools"] { display: none !important; }
+    /* ─── Breadcrumb (les DEUX formats de rendu du site) — l'ancre courte
+       = le container max-w-[1200px]+pt-3 (commun aux deux). Fallbacks :
+       les liens du format desktop. Une maj du site peut casser l'ancre →
+       re-dumper (snippet IOUtils) et re-trouver le container en 30 s. ─── */
+    [class*="max-w-[1200px]"].pt-3,
+    a[href="/tools"],
+    a[href="/"],
+    div:has(> a[href="/tools"])
+    { display: none !important; }
+
+    /* ─── Respiration : décoller le Download du bord bas (padding du
+       container de la barre de CTAs) ─── */
+    div:has(> button > span.truncate) {
+        padding-bottom: 16px !important;
+    }
+
+    .rounded-area-500.shadow-800 { margin-bottom: 12px !important; }
+
+    /* ─── Spacer/footer sous la preview (container pb-6 + justify-between,
+       trouvé au devtool opérateur) : tué — il créait l'écart. Version
+       solide par attributs partiels. ─── */
+    [class*="pb-6"][class*="justify-between"] { display: none !important; }
+
+    /* ─── Dropzone / surface du tool en VERRE (cohérent avec le toast) —
+       base ultra-subtile, hover à peine plus présent (choix opérateur) ─── */
+    .bg-surface-subtle {
+        background-color: #00000010 !important;
+        backdrop-filter: blur(80px);
+    }
+
+    .hover\\:bg-background-subdued-hover:hover {
+        background-color: #00000015 !important;
+    }
+
+    /* ─── Fond du site : c'est le BODY (bg-surface-default) qui peint le
+       blanc plein — teinte légère pour laisser le carré respirer ─── */
+    body.bg-surface-default { background-color: #00000010 !important; }
+
+    /* ─── Vide au-dessus de la preview : la dropzone du tool garde un
+       padding vertical propre à la landing (div.py-6 vu dans le dump) ─── */
+    .py-6 { padding-top: 0 !important; padding-bottom: 0 !important; }
 
     /* ─── Compaction : les containers du tool ne décident plus de la
        hauteur — le carré du ghost commande. ─── */
@@ -747,8 +790,15 @@
         max-height: 100% !important;
     }
 
-    /* ─── Scroll interdit : le carré est fini, pas de dépassement ─── */
-    html, body { overflow: hidden !important; height: 100% !important; }
+    /* ─── Scroll interdit + site TRANSPARENT : le canvas du browser ne
+       peint plus de blanc — c'est le fond verre du WRAPPER (chrome) qui
+       apparaît derrière le contenu. ─── */
+    html, body {
+        overflow: hidden !important;
+        height: 100% !important;
+        background: transparent !important;
+    }
+    body.bg-surface-default { background-color: transparent !important; }
 }`;
 
     function initSiteStyleSheet() {
