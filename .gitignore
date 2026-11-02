@@ -7,3 +7,4 @@ debug.log
 
 # Backups de revert (états intermédiaires archivés)
 *.bak
+ctrlv.ps1

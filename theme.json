@@ -3,7 +3,7 @@
   "name": "Remove BG",
   "description": "Retrait de BG sans friction : toast au download, ghost browser off-screen, captcha auto-revealed",
   "author": "Impre",
-  "version": "0.2.0",
+  "version": "0.13.0",
   "style": { "chrome": "chrome.css" },
   "js": true,
   "scripts": {

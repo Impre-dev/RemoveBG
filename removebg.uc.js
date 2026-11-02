@@ -534,6 +534,13 @@
     // ═══════════════════════════════════════════════════════════════════
 
     const FRAME_SCRIPT_SRC = `(function () {
+    // Idempotence : une même navigation peut injecter DEUX fois ce script
+    // (inscription directe + delayed du loadFrameScript) — une seule
+    // instance active par document, sinon listeners en double.
+    try {
+        if (content.wrappedJSObject.__rmbgFrameActive) return;
+        content.wrappedJSObject.__rmbgFrameActive = true;
+    } catch (e) {}
     const ACCEPT = 'image/jpeg,image/png,image/webp,image/avif';
     const SELECTOR = 'input[type="file"][accept="' + ACCEPT + '"]';
     let announced = false;
