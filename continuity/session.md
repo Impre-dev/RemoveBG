@@ -1,42 +1,20 @@
 # Session du 02/11 (2)
 
 ## État courant
-**Épuration v1 VALIDÉE + pipeline 1er cycle opérationnel — 2e cycle = chantier ouvert (D13).**
-- Pipeline : DL → toast (redesigné) → clic → collage auto → l'humain clique
-  Download → détection résultat → overlay se ferme seul. **Le 1er cycle de
-  session est parfait** (constat 02:16, DIAG paste files=1).
-- Overlay : carré 420×440 (resize validé isolément, b5b21cf), wrapper chrome
-  avec bouton ✕ (fermeture sans purge), agent stylesheet d'épuration
-  (marketing, before/after, pastilles, CTAs sauf Download tués — ancres
-  stables issues du dump DOM 3.6 Mo, constat 01:55). userContent.css purgé
-  de sa section photoroom (backup `.bak-epuration-0211`).
-- **Régression épuration (01:15-01:30) diagnostiquée par élimination** :
-  l'injection DOM d'un `<style>` dans le content du tool (même vide) tue le
-  collage auto ET manuel. Le resize 440 est INNOCENT. La voie = agent
-  stylesheet côté chrome, zéro contact avec le DOM du site.
 
-**Règle de survie captcha** (décision design) : le captcha du tool est un
-tripwire — un DL auto pendant sa présence = signal bot. L'humain clique
-Download, TOUJOURS. Le mod ne fait que détecter le DL et refermer.
+**PHASE 8 (vision setup idéal) V1 FONCTIONNELLE — constat opérateur 04:2x : « ça marche ».**
+- Cycle complet : DL → toast → clic → traitement 100% hors champ → l'overlay
+  apparaît DÉJÀ recadré sur le rectangle damier seul → clic → `-nobg.png`
+  écrit à côté de l'original → envol. Deux clics, zéro site vu.
+- Le paris blob:/data: du src a tenu (fetch local OK, zéro réseau).
+- Recadrage : browser taille fixe + wrap rétrécit + margins négatifs — le
+  site ne reflow pas, la mesure reste exacte.
+- Listeners chrome liés UNE fois par browser (le frame script, lui, se
+  recharge à chaque nav — D13 inchangé).
 
-## À la prochaine session (file priorisée)
-- ⭐ **VISION SETUP IDÉAL (spec capture 03:41, adoptée)** : l'overlay = le
-  rectangle damier de l'image, RIEN d'autre. Le site tourne toujours
-  (chargement/pub/bruit hors champ pour toujours — reveal conditionné au
-  canvas résultat, pas à l'input file). Architecture validée en discussion :
-  ① frame script mesure la frame (position + dims) → chrome crop/resize le
-  wrap (offset négatif, overflow hidden) pour ne montrer que le damier ;
-  ② clic image → couche cliquable chrome-side (épargnant le coin croix) →
-  frame script canvas.toBlob() lecture seule (D12) → blob au chrome via
-  message manager (structured clone) → IOUtils.write direct dans Downloads
-  → fermeture auto. ③ croix native du site = reset : frame script détecte
-  la disparition du canvas → hideGhost (lecture seule, jamais d'injection).
-  Cycle humain final : DL → clic toast → l'image apparaît en carré de
-  verre → clic dessus → fichier dans Downloads, overlay envolé. 2 clics.
-  Angles morts à valider : cadrage frame selon aspect ratio, toBlob
-  non-tainted, canvas unique identifiable (dump + count).
-- Épuration suite : (b) fond transparent — FAIT (13c3cc9, verre utopia
-  validé 03:30) ; micro-retouches marges au devtool si l'œil affine
+**Chantier ouvert : le feedback (mode aveugle).** Rien ne signale le
+  processing (3-5 s muettes) ni le DL réussi (l'overlay s'envole en
+  silence). Options proposées, décision opérateur en cours.
 
 ## Journal
 - [jalon] Phase 0-4 (cf. page du 01/11) : squelette → injection image (v0.9.5)
@@ -95,3 +73,12 @@ Download, TOUJOURS. Le mod ne fait que détecter le DL et refermer.
   (crop par offset + couche cliquable + toBlob via frame script + save
   chrome direct + croix native = reset). Détails architecture dans la
   file priorisée — prochaine session dédiée
+- [jalon, 04:2x] **PHASE 8 v1 VALIDÉE (constat opérateur « ça marche »)** :
+  dump ToolV2.js a tout débloqué — le résultat est un IMG (pas un canvas),
+  damier = classes CSS, croix native = handleReset. fetch(img.src) local
+  (blob:/data:) remplace le toBlob : zéro tainted, zéro réseau, règle
+  captcha respectée (lecture d'un blob déjà affiché). Recadrage sans
+  reflow (browser taille fixe). Reveal au résultat seulement. Listeners
+  chrome × 1/browser. v0.10.0
+- [chantier, 04:2x] **Feedback ouvert (mode aveugle)** : rien pendant le
+  processing (3-5 s), rien au DL (envol silencieux). Options en discussion

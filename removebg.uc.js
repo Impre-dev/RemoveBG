@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name           RemoveBG — Engine
-// @version        0.9.5
+// @version        0.10.0
 // @description    Retrait de BG sans friction : toast au download, ghost browser, paste natif
 // @author         Impre
 // @include        main
@@ -19,6 +19,9 @@
     //    3. Clic Oui → ghost browser off-screen charge le tool
     //    4. Copie clipboard (helper screenshot : nativeimage SANS tiret)
     //       + paste NATIF (commandManager)
+    //    5. PHASE 8 (vision setup idéal) : le site tourne HORS CHAMP —
+    //       l'overlay n'est révélé qu'au résultat, recadré sur le rectangle
+    //       damier seul. Clic sur l'image → PNG dans Downloads → envol.
     //
     //  ⚠️ Leçons de plateforme (prouvées 01/11) :
     //  - installMod écrase les fichiers locaux par le contenu GitHub.
@@ -213,7 +216,7 @@
     //  PHASE 3 — Ghost browser off-screen + chargement du tool
     // ═══════════════════════════════════════════════════════════════════
 
-    let ghost = null; // { browser, mmAttached }
+    let ghost = null; // { browser, wrap }
     let pipelineActive = false; // collage → DL résultat (fenêtre du résultat attendu)
 
     function getGhost() {
@@ -245,10 +248,22 @@
             log('Overlay fermé manuellement');
         });
 
+        // Couche cliquable (phase 8) : TOUTE la surface du damier = bouton
+        // (clic → fetch du PNG résultat → Downloads → envol). Sous la croix
+        // (z-index), qui ne montre qu'au survol du wrap.
+        const clickzone = document.createElementNS(HTML_NS, 'div');
+        clickzone.id = 'removebg-ghost-clickzone';
+        clickzone.title = "Télécharger l'image (sans fond)";
+        clickzone.addEventListener('click', () => {
+            log('Clic damier → fetch résultat via frame script');
+            ghost.browser.messageManager.sendAsyncMessage('RemoveBG:FetchResult', {});
+        });
+
         wrap.appendChild(b);
+        wrap.appendChild(clickzone);
         wrap.appendChild(close);
         document.documentElement.appendChild(wrap);
-        ghost = { browser: b, wrap, mmAttached: false };
+        ghost = { browser: b, wrap };
         log('Ghost browser créé');
         return ghost;
     }
@@ -259,6 +274,63 @@
 
     function hideGhost() {
         ghost?.wrap.classList.remove('rmbg-ghost-visible');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    //  PHASE 8 — VISION SETUP IDÉAL : overlay = rectangle damier seul.
+    //  ① Le frame script mesure l'img résultat (img[class*="bg-damier"],
+    //  ancre design-system du dump ToolV2) → ResultRect.
+    //  ② Le wrap recadre : taille = rect mesuré, browser décalé en négatif
+    //  MAIS GARDE SA TAILLE (zéro reflow du site — le rect reste valide) ;
+    //  l'overlay n'est révélé QU'ICI : montage, segmentation, captcha
+    //  restent hors champ pour toujours.
+    //  ③ Clic (couche cliquable chrome) → frame script fetch(img.src) —
+    //  blob:/data: même origine : le PNG transparent déjà en mémoire,
+    //  zéro appel réseau, zéro clic export (règle captcha respectée : on
+    //  lit localement ce qui est déjà affiché) → buffer → IOUtils.write à
+    //  côté de l'original → envol.
+    //  ④ Croix native du site (handleReset) = imgs démontées → ResultGone
+    //  → purge. Lecture seule, jamais d'injection dans le DOM du site.
+    // ═══════════════════════════════════════════════════════════════════
+
+    let currentSource = null; // { path } du download à l'origine du pipeline
+
+    const RESULT_EXT = {
+        'image/png': 'png',
+        'image/jpeg': 'jpg',
+        'image/webp': 'webp',
+        'image/avif': 'avif',
+    };
+
+    function applyResultCrop(rect) {
+        const g = getGhost();
+        const br = g.browser.getBoundingClientRect(); // taille actuelle (≈ wrap 420x440)
+        const x = Math.max(0, rect.x);
+        const y = Math.max(0, rect.y);
+        // Le browser GARDE sa taille : seul le wrap rétrécit (overflow
+        // hidden) et le browser se décale en négatif — le layout du site
+        // ne bouge pas d'un pixel, la mesure reste exacte.
+        g.browser.style.width = br.width + 'px';
+        g.browser.style.height = br.height + 'px';
+        g.browser.style.marginLeft = -x + 'px';
+        g.browser.style.marginTop = -y + 'px';
+        g.wrap.style.width = rect.w + 'px';
+        g.wrap.style.height = rect.h + 'px';
+        revealGhost();
+        log(`Résultat cadré ${Math.round(rect.w)}x${Math.round(rect.h)} @ ${Math.round(x)},${Math.round(y)} — overlay révélé`);
+    }
+
+    async function saveResult({ buffer, mime }) {
+        try {
+            const ext = RESULT_EXT[mime] || 'png';
+            const base = (currentSource?.path || 'image.png').replace(/\.[^./\\]+$/, '');
+            const path = `${base}-nobg.${ext}`;
+            await IOUtils.write(path, buffer, { mode: 'overwrite' });
+            log('Résultat sauvegardé →', path);
+            closeGhostAfterResult();
+        } catch (e) {
+            log('ERREUR saveResult :', e);
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -290,6 +362,14 @@
     function purgeGhostTool() {
         const g = getGhost();
         hideGhost();
+        // Reset du recadrage (phase 8) : inline styles vidés — le prochain
+        // cycle repart du wrap plein, browser 100%/100%.
+        g.browser.style.width = '';
+        g.browser.style.height = '';
+        g.browser.style.marginLeft = '';
+        g.browser.style.marginTop = '';
+        g.wrap.style.width = '';
+        g.wrap.style.height = '';
         try {
             // Purge du tool : l'élément reste (réutilisé tel quel), la page
             // est déchargée. loadTool() re-naviguera au prochain run.
@@ -332,9 +412,9 @@
         g.browser.loadURI(uri, { triggeringPrincipal: principal });
         // D13 (02/11) : le frame script initial ne survit pas au cycle
         // purge about:blank → re-nav (site prêt, collage manuel OK, mais
-        // jamais de Ready) → on le re-charge à CHAQUE navigation. Les
-        // doublons de listeners sont bénins (Ready = resolve no-op).
-        ghost.mmAttached = false;
+        // jamais de Ready) → on le re-charge à CHAQUE navigation.
+        // (Les listeners chrome, eux, sont liés une seule fois — cf.
+        // attachFrameScript.)
         attachFrameScript(g.browser);
         log('Navigation lancée');
     }
@@ -377,6 +457,57 @@
             sendAsyncMessage('RemoveBG:Pasted', { files: 'err:' + String(err) });
         }
     }, true);
+    // ─── Phase 8 : suivi du résultat (LECTURE SEULE) ───
+    // Le résultat affiché = img[class*="bg-damier"] (deux imgs superposées,
+    // même boîte). Apparition → mesure du rect (le damier peint LA BOÎTE de
+    // l'élément — object-contain letterbox compris) → ResultRect.
+    // Disparition (croix native = handleReset démonte les imgs) → ResultGone.
+    const DAMIER_SEL = 'img[class*="bg-damier"]';
+    let trackedResult = null;
+    const measureResult = (img) => {
+        try {
+            const r = img.getBoundingClientRect();
+            if (r.width < 2 || r.height < 2) return;
+            sendAsyncMessage('RemoveBG:ResultRect', {
+                x: r.left, y: r.top, w: r.width, h: r.height,
+                src: img.currentSrc || img.src,
+                nw: img.naturalWidth, nh: img.naturalHeight,
+            });
+        } catch (e) {}
+    };
+    const armResultMeasure = (img) => {
+        if (img.complete && img.naturalWidth > 0) {
+            measureResult(img);
+            // Filet : si le layout n'était pas prêt (rect ~0), re-mesure
+            // au frame suivant — doublon bénin (valeurs identiques).
+            content.requestAnimationFrame(() => measureResult(img));
+        } else {
+            img.addEventListener('load', () => measureResult(img), { once: true });
+        }
+    };
+    let resultObserved = false;
+    const tryObserveResult = () => {
+        if (resultObserved) return;
+        try {
+            if (!content || !content.document || !content.document.documentElement) return;
+            resultObserved = true;
+            const mo = new content.MutationObserver(() => {
+                try {
+                    const img = content.document.querySelector(DAMIER_SEL);
+                    if (img && img !== trackedResult) {
+                        trackedResult = img;
+                        armResultMeasure(img);
+                    } else if (!img && trackedResult) {
+                        trackedResult = null;
+                        sendAsyncMessage('RemoveBG:ResultGone', {});
+                    }
+                } catch (e) {}
+            });
+            mo.observe(content.document.documentElement, { childList: true, subtree: true });
+            const img = content.document.querySelector(DAMIER_SEL);
+            if (img) { trackedResult = img; armResultMeasure(img); }
+        } catch (e) {}
+    };
     const tryObserve = () => {
         if (announced) return;
         try {
@@ -395,8 +526,11 @@
         } catch (e) {}
     };
     tryObserve();
+    tryObserveResult();
     addEventListener('DOMContentLoaded', tryObserve, true);
+    addEventListener('DOMContentLoaded', tryObserveResult, true);
     addEventListener('pageshow', tryObserve, true);
+    addEventListener('pageshow', tryObserveResult, true);
     addMessageListener('RemoveBG:DoPaste', () => {
         // Paste NATIF : le command manager DU CONTENT exécute cmd_paste
         try {
@@ -412,6 +546,30 @@
             }
         }
     });
+    // Phase 8 : le PNG résultat est déjà en mémoire (blob:/data:) — fetch
+    // local, zéro réseau, zéro clic export. Buffer structuré-cloné au chrome.
+    addMessageListener('RemoveBG:FetchResult', () => {
+        (async () => {
+            try {
+                const img = content.document.querySelector(DAMIER_SEL);
+                if (!img) {
+                    sendAsyncMessage('RemoveBG:ResultBlob', { err: 'img damier introuvable' });
+                    return;
+                }
+                const resp = await fetch(img.currentSrc || img.src);
+                const blob = await resp.blob();
+                const buf = await blob.arrayBuffer();
+                sendAsyncMessage('RemoveBG:ResultBlob', {
+                    buffer: buf,
+                    mime: blob.type || 'image/png',
+                    nw: img.naturalWidth,
+                    nh: img.naturalHeight,
+                });
+            } catch (e) {
+                sendAsyncMessage('RemoveBG:ResultBlob', { err: String(e) });
+            }
+        })();
+    });
 })();`;
 
     const FRAME_SCRIPT_URI = `data:application/javascript;charset=utf-8,${encodeURIComponent(
@@ -422,10 +580,14 @@
     let lastReadyAt = 0; // timestamp du dernier Ready reçu (race condition 2e cycle)
 
     function attachFrameScript(browser) {
-        if (ghost.mmAttached) return;
-        ghost.mmAttached = true;
         const mm = browser.messageManager;
+        // D13 : le frame script est rechargé à CHAQUE navigation (il ne
+        // survit pas au cycle purge → re-nav). Les listeners chrome, eux,
+        // vivent sur le messageManager (persistent aux navigations) → une
+        // seule liaison par browser.
         mm.loadFrameScript(FRAME_SCRIPT_URI, true);
+        if (browser.__rmbgMmBound) return;
+        browser.__rmbgMmBound = true;
         mm.addMessageListener('RemoveBG:Ready', () => {
             lastReadyAt = Date.now();
             log('Dropzone prête (frame script)');
@@ -441,6 +603,24 @@
         mm.addMessageListener('RemoveBG:Focused', () => {
             log('Content window a le focus');
             pendingFocused?.resolve();
+        });
+        // ─── Phase 8 : recadrage damier + sauvegarde directe ───
+        mm.addMessageListener('RemoveBG:ResultRect', (msg) => {
+            if (!pipelineActive) return;
+            applyResultCrop(msg.data);
+        });
+        mm.addMessageListener('RemoveBG:ResultGone', () => {
+            if (!pipelineActive) return;
+            log('Résultat disparu (croix native) — reset');
+            purgeGhostTool();
+        });
+        mm.addMessageListener('RemoveBG:ResultBlob', (msg) => {
+            const d = msg.data;
+            if (d.err) {
+                log('ERREUR fetch résultat (frame) :', d.err);
+                return;
+            }
+            saveResult(d);
         });
     }
 
@@ -650,8 +830,16 @@
     async function startRemoveBG(filePath) {
         try {
             log('Remove BG demandé →', filePath);
+            currentSource = { path: filePath };
+            if (pipelineActive) {
+                // Run précédent jamais refermé (résultat non venu) : remise
+                // à zéro propre — le re-load repart comme un 1er cycle.
+                log('Pipeline déjà actif — reset avant re-run');
+                purgeGhostTool();
+            }
             pipelineActive = true;
-            revealGhost();
+            // PAS de reveal ici (phase 8) : montage, segmentation, captcha
+            // restent hors champ — l'overlay n'apparaît qu'au résultat.
             const g = getGhost();
             attachFrameScript(g.browser);
             await loadTool();
@@ -828,9 +1016,9 @@
         }
         window.__removeBGPatched = true;
 
-        log('init v0.9.5');
+        log('init v0.10.0');
         // Header debug.log (purge copyDebug — réécrite par le 1er log en overwrite)
-        logFile('chrome', '──── session start v0.9.5 ────');
+        logFile('chrome', '──── session start v0.10.0 ────');
         probeEnvironment();
         initDownloadsListener();
         initSiteStyleSheet();

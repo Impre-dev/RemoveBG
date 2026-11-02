@@ -32,6 +32,9 @@
     height: 100%;
 }
 
+/* Croix : invisible au repos — l'overlay en résultat = damier PUR. Elle
+   n'apparaît qu'au survol du wrap (le clic reste possible au même endroit :
+   pointer-events suit l'opacité). */
 #removebg-ghost-close {
     position: absolute;
     top: 8px;
@@ -46,11 +49,27 @@
     font-size: 14px;
     line-height: 1;
     cursor: pointer;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 150ms ease;
+}
+
+#removebg-ghost-wrap:hover #removebg-ghost-close {
     opacity: 0.75;
+    pointer-events: auto;
 }
 
 #removebg-ghost-close:hover {
     opacity: 1;
+}
+
+/* Couche cliquable (phase 8) : TOUTE la surface du damier = bouton —
+   clic → fetch du PNG résultat → Downloads → envol. Sous la croix. */
+#removebg-ghost-clickzone {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    cursor: pointer;
 }
 
 /* ═══ RemoveBG — Toast UI ═══ */
