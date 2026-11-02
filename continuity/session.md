@@ -20,22 +20,23 @@ tripwire — un DL auto pendant sa présence = signal bot. L'humain clique
 Download, TOUJOURS. Le mod ne fait que détecter le DL et refermer.
 
 ## À la prochaine session (file priorisée)
-- ⭐ **D13 — Le 2e cycle ne repart pas** : après purge (about:blank), le
-  re-DL pend — le site re-render son turnstile AVANT la dropzone et
-  `turnstile/api.js` est ORB-bloquée dans le ghost → l'UI ne monte jamais
-  (constat 02:16, logs Browser Console). Pistes : purge site-data/cookies
-  photoroom à la fermeture, ou signal Ready différent en re-load, ou ne
-  JAMAIS re-naviguer. Outil : DIAG paste (frame script) + Browser Console
-  (⚠️ debug.log muet depuis 00:13 — writes en échec silencieux).
-- Épuration suite (v1 validée 01:55) : (a) tuer le breadcrumb résiduel +
-  compaction fine (Download collé en bas), (b) fond transparent + blur
-  toast côté ghost (`browser transparent="true"` + html/body transparent —
-  expérimental, à froid).
-- Phase 5 captcha watch — probablement optionnelle (turnstile auto-résolu
-  invisible constaté dans le dump, cf. D12)
-- Purge copyDebug (⚠️ debug.log muet — réparer les writes), code mort frame
-  script (DoPaste sans émetteur), restauration clipboard (optionnel),
-  cause blocage post-v0.6.2 (bak, comparaison à froid)
+- ⭐ **VISION SETUP IDÉAL (spec capture 03:41, adoptée)** : l'overlay = le
+  rectangle damier de l'image, RIEN d'autre. Le site tourne toujours
+  (chargement/pub/bruit hors champ pour toujours — reveal conditionné au
+  canvas résultat, pas à l'input file). Architecture validée en discussion :
+  ① frame script mesure la frame (position + dims) → chrome crop/resize le
+  wrap (offset négatif, overflow hidden) pour ne montrer que le damier ;
+  ② clic image → couche cliquable chrome-side (épargnant le coin croix) →
+  frame script canvas.toBlob() lecture seule (D12) → blob au chrome via
+  message manager (structured clone) → IOUtils.write direct dans Downloads
+  → fermeture auto. ③ croix native du site = reset : frame script détecte
+  la disparition du canvas → hideGhost (lecture seule, jamais d'injection).
+  Cycle humain final : DL → clic toast → l'image apparaît en carré de
+  verre → clic dessus → fichier dans Downloads, overlay envolé. 2 clics.
+  Angles morts à valider : cadrage frame selon aspect ratio, toBlob
+  non-tainted, canvas unique identifiable (dump + count).
+- Épuration suite : (b) fond transparent — FAIT (13c3cc9, verre utopia
+  validé 03:30) ; micro-retouches marges au devtool si l'œil affine
 
 ## Journal
 - [jalon] Phase 0-4 (cf. page du 01/11) : squelette → injection image (v0.9.5)
@@ -78,5 +79,19 @@ Download, TOUJOURS. Le mod ne fait que détecter le DL et refermer.
   Dropzone prête) : le re-load du tool re-render le turnstile AVANT la
   dropzone et l'api.js ORB-bloquée → UI jamais montée. Revert complet →
   ✕ = hideGhost seul. 2e cycle = D13, attaque à froid
+- [jalon] **D13 FIXÉ (a9c2e1f, constat 02:40)** : le frame script ne
+  survit pas au cycle purge about:blank → re-nav (site prêt, collage
+  manuel OK, jamais de Ready) → re-chargé à CHAQUE navigation (guard
+  mmAttached levé dans loadTool). + purge site-data (nsIClearDataService
+  CLEAR_ALL sur photoroom) aux fermetures
+- [jalon] **Overlay EN VERRE (13c3cc9, constat 03:30)** : browser
+  transparent="true" + site transparent (agent sheet) + wrap porte le
+  fond utopia var + blur 80px — la page Zen floutée derrière, comme le
+  toast. Le fond blanc plein était peint par le canvas browser + body
+  (bg-surface-default), pas la dropzone
 - [leçon, outil] debug.log muet depuis 00:13 (writes en échec silencieux) —
   la Browser Console reste la source quand le log se tait
+- [vision, 03:42] **Setup idéal adopté** : overlay = rectangle damier seul
+  (crop par offset + couche cliquable + toBlob via frame script + save
+  chrome direct + croix native = reset). Détails architecture dans la
+  file priorisée — prochaine session dédiée
