@@ -2,19 +2,14 @@
 
 ## État courant
 
-**Étape 1 (toast de chargement) VALIDÉE — v0.11.0 sur base revertée a1ab9c1.**
-- Toast 3 états : ask (« Supprimer le fond ? », jauge 4 s) → traitement
-  (« Suppression du fond… », shimmer, jauge 15 s MASQUÉE = filet d'échec,
-  reset largeur explicite) → le damier arrive, le toast s'efface.
-- **Save TOUJOURS cassé** : `ERREUR saveResult {}` ×3 — hérité de v0.10.0 :
-  la phase 8 n'a jamais été validée jusqu'au save (seulement jusqu'au
-  damier). Transport ArrayBuffer via message manager = suspect n°1.
-  L'overlay ne se ferme donc pas après clic damier.
-- **File priorisée** :
-  ⭐ Étape 2 : fix transport save (base64) + voile vert ✓ sur l'image +
-     fermeture animée (transform/opacity only) — design voté opérateur
-  · couleurs des états du toast (décision à l'œil, reportée)
-  · restauration clipboard (en réserve), micro-retouches à l'œil
+**PROJET FONCTIONNEL DE BOUT EN BOUT — v0.13.0, tous les constats opérateur ✓.**
+- Cycle final : DL → toast ask (4 s) → clic → « Traitement… » shimmer hors
+  champ → damier seul en verre → clic → `-nobg.png` à côté de l'original →
+  voile vert ✓ + ding (level-up.mp3, 50 %) → envol animé. Presse-papier
+  restauré au paste confirmé. Zéro site vu.
+- **File restante** : push (imminent — ce commit) · couleurs des états du
+  toast (reporté, à l'œil) · captcha reveal Phase 5 en réserve (le site ne
+  l'a jamais exigé hors champ — constat opérateur)
 
 ## Journal
 - [jalon] Phase 0-4 (cf. page du 01/11) : squelette → injection image (v0.9.5)
@@ -97,3 +92,17 @@
 - [jalon, 05:2x] **Étape 1 VALIDÉE (constat opérateur « Validé GG »)** :
   toast de chargement — shimmer + filet masqué 15 s + reset largeur
   explicite, sur base saine, frame script/injection intacts. v0.11.0
+- [jalon, 05:3x] **Étape 2 VALIDÉE** : transport base64 frame→chrome (le
+  write vit), voile vert ✓ + chevron pop, envol animé (transform/opacity,
+  enchaînement animationend). v0.12.0
+- [jalon, 05:4x] **Polish validé** : level-up.mp3 embarqué (choix
+  opérateur) à 50 %, envol ralenti (400+380 ms), logs nettoyés (logDebug,
+  format d'erreur réparé globalement — adieu `{}`), idempotence frame
+  script (garde __rmbgFrameActive — un seul Dropzone prête au log),
+  vestiges nettoyés (.bak, ctrlv.ps1 détaché — verrou disque, theme.json
+  0.13.0). v0.13.0
+- [jalon, 05:5x] **Restauration presse-papier VALIDÉE** : armée au cycle,
+  tirée au premier paste confirmé (Pasted) — jamais avant, sinon le Ctrl+V
+  lirait le contenu restauré. Si paste échoue : l'image reste au
+  clipboard (filet debug conservé)
+- [push] Batch final vers origin/main

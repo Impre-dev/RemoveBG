@@ -724,6 +724,15 @@
                 `DIAG paste — files=${d.files} name=${d.name} type=${d.type} size=${d.size}` +
                     ` target=${d.target} active=${d.active} trusted=${d.trusted}`
             );
+            // Le tool a reçu le paste → le presse-papier peut être rendu.
+            if (clipboardRestore) {
+                const snap = clipboardRestore.snap;
+                clipboardRestore = null;
+                // Déféré : le handler du site (bubble) lit clipboardData au
+                // dispatch — on rend le presse-papier APRÈS la fin de l'event
+                // (yield event loop, autorisé — pas un polling).
+                setTimeout(() => restoreClipboard(snap), 0);
+            }
         });
         mm.addMessageListener('RemoveBG:Focused', () => {
             logDebug('Content window a le focus');
@@ -780,6 +789,8 @@
             );
         },
     };
+
+    let clipboardRestore = null; // { snap } — restauré au paste confirmé
 
     function snapshotClipboard() {
         const snap = {};
@@ -985,9 +996,11 @@
             await focusGhost();
             logDebug('Focus ghost OK → Ctrl+V AHK');
             await sendSystemCtrlV();
-
-            // Restauration presse-papier : en réserve (polish)
-            if (false) setTimeout(() => restoreClipboard(snap), 2000);
+            // Restauration ARMÉE : elle partira au premier paste confirmé
+            // par le tool (message Pasted) — jamais avant, sinon le Ctrl+V
+            // lirait le presse-papier restauré au lieu de notre image. Si le
+            // paste échoue, rien ne part : l'image reste dispo pour debug.
+            clipboardRestore = { snap };
         } catch (e) {
             log('ERREUR startRemoveBG :', e);
         }
