@@ -197,7 +197,6 @@
             ? name.slice(0, MAX_NAME_CHARS - 1).trimEnd() + '…'
             : name;
         t.name.textContent = shown;
-        t.name.title = name;
         if (thumbPath) t.thumb.style.backgroundImage = `url("${PathUtils.toFileURI(thumbPath)}")`;
         // Afficher AVANT de lancer la transition : une transition ne démarre
         // jamais sur un élément display:none → toast immortel.
